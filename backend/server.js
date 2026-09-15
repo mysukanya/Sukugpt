@@ -105,6 +105,19 @@ app.post('/api/chat', async (req, res) => {
 
     const is503Error = (err) => {
       const errorStr = String(err?.message || '');
+      // Do NOT retry 429, quota, rate-limit, or RESOURCE_EXHAUSTED errors
+      if (
+        err?.status === 429 ||
+        err?.code === 429 ||
+        errorStr.includes('429') ||
+        errorStr.includes('RESOURCE_EXHAUSTED') ||
+        errorStr.includes('quota') ||
+        errorStr.includes('rate limit') ||
+        errorStr.includes('Too Many Requests')
+      ) {
+        return false;
+      }
+
       return (
         err?.status === 503 ||
         err?.code === 503 ||
@@ -117,7 +130,7 @@ app.post('/api/chat', async (req, res) => {
     let response = null;
     let lastError = null;
 
-    // 1. Try Primary Model (gemini-3.8-flash) with exponential backoff retries (2s, 4s, 8s)
+    // 1. Try Primary Model (gemini-3.8-flash) with exponential backoff retries (2s, 4s, 8s) ONLY for 503 errors
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         response = await ai.models.generateContent({
@@ -136,10 +149,8 @@ app.post('/api/chat', async (req, res) => {
           continue;
         }
 
-        // If error is not a 503, throw immediately
-        if (!is503Error(geminiError)) {
-          throw geminiError;
-        }
+        // If error is not a 503 (e.g. 429, 400, 403), throw immediately without retrying
+        throw geminiError;
       }
     }
 
@@ -168,16 +179,25 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('Error communicating with Gemini API:', error);
 
-    // Provide friendly, clear error messages to the beginner user
+    // Provide friendly, clear error messages to the user
     let friendlyMessage = 'An unexpected error occurred while communicating with Gemini AI.';
     const errorStr = String(error.message || '');
 
+    const isQuotaOrRateLimit =
+      error?.status === 429 ||
+      error?.code === 429 ||
+      errorStr.includes('429') ||
+      errorStr.includes('RESOURCE_EXHAUSTED') ||
+      errorStr.includes('quota') ||
+      errorStr.includes('rate limit') ||
+      errorStr.includes('Too Many Requests');
+
     if (errorStr.includes('API_KEY_INVALID') || errorStr.includes('API key not valid') || error.status === 400 || error.status === 403) {
       friendlyMessage = 'Invalid Gemini API key! Please check backend/.env and make sure you pasted a valid key from Google AI Studio.';
+    } else if (isQuotaOrRateLimit) {
+      friendlyMessage = 'SukuGPT is temporarily unavailable because the Gemini API quota has been reached. Please try again later.';
     } else if (errorStr.includes('503') || errorStr.includes('UNAVAILABLE') || errorStr.includes('high demand') || error.status === 503) {
       friendlyMessage = 'Gemini servers are currently experiencing high demand. Please try again in a few moments.';
-    } else if (errorStr.includes('RESOURCE_EXHAUSTED') || error.status === 429) {
-      friendlyMessage = 'Gemini rate limit or quota exceeded. Please wait a moment before sending another message.';
     } else if (error.message) {
       friendlyMessage = `Gemini Error: ${error.message}`;
     }
