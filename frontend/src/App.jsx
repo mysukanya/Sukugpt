@@ -15,7 +15,7 @@ import {
 import './App.css';
 
 // Backend API URL (Reads environment variable in production, falls back to http://localhost:5000)
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000').replace(/\/+$/, '');
+const VITE_API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/+$/, '');
 
 const STARTER_PROMPTS = [
   { icon: '💡', title: 'Explain a Concept', prompt: 'Explain how the internet works like I am 10 years old.' },
@@ -48,7 +48,7 @@ function App() {
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/health`);
+        const response = await fetch(`${VITE_API_URL}/api/health`);
         if (response.ok) {
           setIsBackendConnected(true);
         } else {
@@ -109,7 +109,7 @@ function App() {
 
     try {
       // 2. Call our Node.js/Express backend
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const response = await fetch(`${VITE_API_URL}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
